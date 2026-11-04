@@ -1,0 +1,4 @@
+#local Onde o Malware deve ficar 
+
+%APPDATA%\Microsoft\Windows\
+#Software\Microsoft\Windows\CurrentVersion\Run
