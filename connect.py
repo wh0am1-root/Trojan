@@ -4,7 +4,7 @@ import socket
 import sys
 import shlex
 import base64
-
+import readline
 
 from pathlib import Path
 from datetime import datetime
@@ -46,6 +46,8 @@ FILE TRANSFER:
   /dowload '<remote_path>'     - Download file
   /upload '<local_file>' '<remote_path>' - Upload file
 
+SCANNERS:
+ /local_scan <192.168.1>       - Scan the local network 
 SYSTEM:
   cd <path>                    - Change directory
   /exit                        - Disconnect client
@@ -250,7 +252,7 @@ def handle_client(conn,addr):
                     break
                 
                 response = b''
-                conn.settimeout(2.0)
+                conn.settimeout(30)
                 
                 while True:
                     try:

